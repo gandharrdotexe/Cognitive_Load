@@ -1,107 +1,113 @@
-body {
-    font-family: Arial, sans-serif;
-    width: 300px;
-    padding: 15px;
-    background-color: #f4f7f6;
-    color: #333;
+/* Add these new styles to your existing styles.css */
+
+/* ML Section Styles */
+.section-box {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    padding: 20px;
+    border-radius: 12px;
+    margin-bottom: 15px;
 }
 
-h1, h2 {
-    text-align: center;
-    color: #2c3e50;
+.section-box h2 {
     margin-top: 0;
+    margin-bottom: 15px;
+    font-size: 18px;
 }
 
-#analysis-container, #summarization-box {
-    background: #fff;
+.ml-score-display {
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    margin-bottom: 15px;
+}
+
+.score-circle {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 24px;
+    font-weight: bold;
+    backdrop-filter: blur(10px);
+    border: 3px solid rgba(255, 255, 255, 0.3);
+    transition: all 0.3s ease;
+}
+
+.score-circle.low {
+    background: rgba(16, 185, 129, 0.3);
+    border-color: #10b981;
+    box-shadow: 0 0 20px rgba(16, 185, 129, 0.5);
+}
+
+.score-circle.medium {
+    background: rgba(245, 158, 11, 0.3);
+    border-color: #f59e0b;
+    box-shadow: 0 0 20px rgba(245, 158, 11, 0.5);
+}
+
+.score-circle.high {
+    background: rgba(249, 115, 22, 0.3);
+    border-color: #f97316;
+    box-shadow: 0 0 20px rgba(249, 115, 22, 0.5);
+}
+
+.score-circle.very-high {
+    background: rgba(239, 68, 68, 0.3);
+    border-color: #ef4444;
+    box-shadow: 0 0 20px rgba(239, 68, 68, 0.5);
+}
+
+.score-info {
+    flex: 1;
+}
+
+.score-info p {
+    margin: 8px 0;
+    font-size: 14px;
+}
+
+.ml-model-info {
+    background: rgba(255, 255, 255, 0.1);
+    padding: 12px;
+    border-radius: 8px;
+    backdrop-filter: blur(10px);
+}
+
+/* Model Management */
+.model-management {
+    background: #f8f9fa;
     padding: 15px;
     border-radius: 8px;
-    box-shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
-    margin-bottom: 20px;
+    margin-top: 15px;
 }
 
-#analysis-container p {
-    margin: 5px 0;
-    font-size: 14px;
-}
-
-#help-message {
-    color: #e74c3c;
-    font-weight: bold;
-    text-align: center;
-    margin-top: 10px;
-}
-
-#focus-message {
-    color: #2ecc71;
-    font-weight: bold;
-    text-align: center;
-    margin-top: 10px;
-}
-
-.button-group {
-    display: flex;
-    justify-content: space-around;
-    gap: 10px;
-    margin-bottom: 20px;
-}
-
-button {
-    flex: 1;
-    padding: 10px;
-    border: none;
-    border-radius: 5px;
-    background-color: #3498db;
-    color: white;
-    font-size: 14px;
+.small-btn {
+    padding: 8px 12px;
+    font-size: 12px;
+    border: 1px solid #ddd;
+    background: white;
+    color: #333;
+    border-radius: 6px;
     cursor: pointer;
-    transition: background-color 0.3s;
+    transition: all 0.2s;
 }
 
-button:hover {
-    background-color: #2980b9;
+.small-btn:hover {
+    background: #667eea;
+    color: white;
+    border-color: #667eea;
 }
 
-#summarization-box textarea {
-    width: 100%;
-    height: 100px;
-    border: 1px solid #bdc3c7;
-    border-radius: 5px;
-    padding: 10px;
-    box-sizing: border-box;
-    margin-bottom: 10px;
+/* Update existing button styles */
+#reset-model-btn {
+    background: #ef4444;
+    color: white;
 }
 
-#summarized-output {
-    background: #ecf0f1;
-    padding: 10px;
-    border-radius: 5px;
-    min-height: 50px;
-    border: 1px solid #bdc3c7;
-}
-
-.separator {
-    border-top: 1px solid #bdc3c7;
-    margin: 20px 0;
-}
-
-/* New CSS for dynamic highlighting and reading guide */
-.cognitive-highlight {
-    background-color: #f1c40f !important;
-    transition: background-color 0.5s ease-in-out;
-}
-
-.reading-guide-line {
-    position: fixed;
-    height: 2px;
-    background-color: #e74c3c;
-    box-shadow: 0 0 10px #e74c3c;
-    z-index: 9999;
-    pointer-events: none;
-    top: 0;
-    left: 0;
-    width: 100%;
-    transform: translateY(0);
-    opacity: 0;
-    transition: transform 0.1s ease-out, opacity 0.5s;
+#reset-model-btn:hover {
+    background: #dc2626;
 }
