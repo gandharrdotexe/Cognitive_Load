@@ -197,7 +197,7 @@ class MLCognitiveLoadDetector {
     }
     
     showLoadNotification(score, level) {
-      // Create a subtle notification
+      // Create a subtle notification the user can click to open the AI assistant
       const notification = document.createElement('div');
       notification.style.cssText = `
         position: fixed;
@@ -241,7 +241,9 @@ class MLCognitiveLoadDetector {
       
       // Click handler
       notification.addEventListener('click', () => {
-        this.sendMessageSafe({ type: 'INJECT_CHATBOT' });
+        // Ask background script to toggle the Cognitive Load sidebar UI
+        // (contains focus mode, sticky notes, capture + image analysis preview, and audit report).
+        this.sendMessageSafe({ type: 'REQUEST_TOGGLE_SIDEBAR' });
         notification.style.animation = 'slideOut 0.3s ease-out';
         setTimeout(() => notification.remove(), 300);
       });
@@ -308,14 +310,18 @@ class MLCognitiveLoadDetector {
       try {
         chrome.runtime.sendMessage(message, (response) => {
           const lastError = chrome.runtime.lastError;
+          // If caller expects a response, surface errors; otherwise, stay silent to avoid noisy
+          // "message port closed before a response was received" warnings for fire-and-forget calls.
           if (lastError) {
-            if (lastError.message && lastError.message.includes('Extension context invalidated')) {
-              console.warn('Extension context invalidated; stopping detection until reload.');
-              this.stopDetection();
-            } else {
-              console.warn('Runtime message error:', lastError);
+            if (callback) {
+              if (lastError.message && lastError.message.includes('Extension context invalidated')) {
+                console.warn('Extension context invalidated; stopping detection until reload.');
+                this.stopDetection();
+              } else {
+                console.warn('Runtime message error:', lastError);
+              }
+              callback(null);
             }
-            if (callback) callback(null);
             return;
           }
 

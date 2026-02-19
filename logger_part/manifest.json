@@ -5,6 +5,7 @@
   "description": "ML-powered cognitive load detection with AI assistance.",
   "permissions": [
     "storage",
+    "tabs",
     "activeTab",
     "scripting",
     "notifications",

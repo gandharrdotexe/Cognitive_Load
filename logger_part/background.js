@@ -72,6 +72,22 @@ importScripts('ml/ml-model.js');
 // Wait for model to initialize
 let modelReady = false;
 
+// =========================
+// Overlay + Capture + Gemini
+// =========================
+// NOTE: Do NOT hardcode API keys in source control.
+// Store it at `chrome.storage.local.set({ geminiApiKey: "..." })` from your UI.
+const AUDIT_REPORT_STORAGE_KEY = 'auditReport';
+const LAST_GEMINI_CALL_STORAGE_KEY = 'lastGeminiCall';
+const GEMINI_COOLDOWN_MS = 60_000; // 60 seconds
+
+let auditReport = [];
+
+chrome.action.onClicked.addListener((tab) => {
+    if (!tab?.id) return;
+    chrome.tabs.sendMessage(tab.id, { action: "toggle_sidebar" });
+});
+
 // Initialize model on extension load
 (async () => {
   try {
@@ -84,6 +100,96 @@ let modelReady = false;
 })();
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+
+    // =========================
+    // Overlay + Capture actions
+    // =========================
+    if (message?.action) {
+        // STEP 1: Overlay Initialization
+        if (message.action === "INIT_OVERLAY") {
+            const tabId = sender?.tab?.id;
+            if (!tabId) {
+                sendResponse?.({ status: "error", error: "No sender tab id available." });
+                return true;
+            }
+
+            chrome.scripting.executeScript(
+                { target: { tabId }, files: ['overlay.js'] },
+                () => {
+                    const err = chrome.runtime.lastError;
+                    if (err) {
+                        sendResponse?.({ status: "error", error: err.message });
+                    } else {
+                        sendResponse?.({ status: "success" });
+                    }
+                }
+            );
+            return true;
+        }
+
+        // STEP 2: Cropped Selection Capture
+        if (message.action === "FINALIZE_CAPTURE") {
+            const tabId = sender?.tab?.id;
+            if (!tabId) {
+                sendResponse?.({ status: "error", error: "No sender tab id available." });
+                return true;
+            }
+
+            chrome.tabs.captureVisibleTab(null, { format: "png" }, (dataUrl) => {
+                const err = chrome.runtime.lastError;
+                if (err) {
+                    sendResponse?.({ status: "error", error: err.message });
+                    return;
+                }
+                processCrop(dataUrl, message.area, tabId)
+                    .then(() => sendResponse?.({ status: "success" }))
+                    .catch((e) => sendResponse?.({ status: "error", error: e?.message || String(e) }));
+            });
+            return true;
+        }
+
+        // STEP 3: Full Screen Capture (Sticky Notes)
+        if (message.action === "CAPTURE_VISIBLE_TAB") {
+            const tabId = sender?.tab?.id;
+            if (!tabId) {
+                sendResponse?.({ status: "error", error: "No sender tab id available." });
+                return true;
+            }
+
+            chrome.tabs.captureVisibleTab(null, { format: "png" }, async (dataUrl) => {
+                const err = chrome.runtime.lastError;
+                if (err) {
+                    sendResponse?.({ status: "error", error: err.message });
+                    return;
+                }
+
+                const newEntry = {
+                    type: "Sticky Note Observation",
+                    timestamp: new Date().toLocaleString(),
+                    screenshot: dataUrl,
+                    comment: message.noteContent,
+                };
+
+                try {
+                    await appendAuditReportEntry(newEntry);
+                    sendResponse?.({ status: "success", count: auditReport.length });
+                } catch (e) {
+                    sendResponse?.({ status: "error", error: e?.message || String(e) });
+                }
+            });
+            return true;
+        }
+
+        // STEP 4: Fetch Report Data
+        if (message.action === "GET_REPORT_DATA") {
+            chrome.storage.local.get([AUDIT_REPORT_STORAGE_KEY], (result) => {
+                const list = result?.[AUDIT_REPORT_STORAGE_KEY] || [];
+                auditReport = Array.isArray(list) ? list : [];
+                sendResponse?.({ data: auditReport });
+            });
+            return true;
+        }
+    }
     
     // ========== EXISTING FUNCTIONALITY ==========
     
@@ -230,6 +336,15 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ success: true });
     }
     
+    // Toggle in-page Cognitive Load sidebar on request (from ml-detector banner click)
+    if (message.type === 'REQUEST_TOGGLE_SIDEBAR') {
+        const tabId = sender?.tab?.id;
+        if (tabId) {
+            chrome.tabs.sendMessage(tabId, { action: "toggle_sidebar" });
+        }
+        // Fire-and-forget; no response needed
+    }
+    
     // Update ML cognitive load score in storage
     if (message.type === 'ML_COGNITIVE_LOAD_UPDATE') {
         chrome.storage.local.get(['userLog'], (result) => {
@@ -295,6 +410,202 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         return true;
     }
 });
+
+async function appendAuditReportEntry(entry) {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get([AUDIT_REPORT_STORAGE_KEY], (result) => {
+            const err = chrome.runtime.lastError;
+            if (err) return reject(new Error(err.message));
+
+            const current = result?.[AUDIT_REPORT_STORAGE_KEY];
+            const list = Array.isArray(current) ? current : [];
+            list.push(entry);
+            auditReport = list;
+
+            chrome.storage.local.set({ [AUDIT_REPORT_STORAGE_KEY]: list }, () => {
+                const err2 = chrome.runtime.lastError;
+                if (err2) return reject(new Error(err2.message));
+                resolve();
+            });
+        });
+    });
+}
+
+// ---------- IMAGE CROPPING ----------
+async function processCrop(dataUrl, area, tabId) {
+    try {
+        if (!area || typeof area.x !== 'number' || typeof area.y !== 'number' || typeof area.w !== 'number' || typeof area.h !== 'number') {
+            throw new Error('Invalid crop area.');
+        }
+
+        const response = await fetch(dataUrl);
+        const blob = await response.blob();
+        const bitmap = await createImageBitmap(blob);
+
+        const canvas = new OffscreenCanvas(area.w, area.h);
+        const ctx = canvas.getContext('2d');
+        ctx.drawImage(bitmap, area.x, area.y, area.w, area.h, 0, 0, area.w, area.h);
+
+        const croppedBlob = await canvas.convertToBlob({ type: 'image/png' });
+        const croppedUrl = await blobToDataUrl(croppedBlob, 'image/png');
+
+        chrome.tabs.sendMessage(tabId, { action: "DISPLAY_CAPTURE", image: croppedUrl });
+        await analyzeWithGemini(croppedUrl, tabId);
+    } catch (e) {
+        console.error("Cropping Error:", e);
+        chrome.tabs.sendMessage(tabId, {
+            action: "AI_RESULT",
+            text: `Cropping error: ${e?.message || String(e)}`
+        });
+        throw e;
+    }
+}
+
+async function blobToDataUrl(blob, mimeType) {
+    const buffer = await blob.arrayBuffer();
+    const bytes = new Uint8Array(buffer);
+    let binary = '';
+    const chunkSize = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunkSize) {
+        binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+    }
+    const base64 = btoa(binary);
+    return `data:${mimeType};base64,${base64}`;
+}
+
+function getStorageValue(key) {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.get([key], (result) => {
+            const err = chrome.runtime.lastError;
+            if (err) return reject(new Error(err.message));
+            resolve(result?.[key]);
+        });
+    });
+}
+
+function setStorageValue(key, value) {
+    return new Promise((resolve, reject) => {
+        chrome.storage.local.set({ [key]: value }, () => {
+            const err = chrome.runtime.lastError;
+            if (err) return reject(new Error(err.message));
+            resolve();
+        });
+    });
+}
+
+// ---------- GEMINI AI ANALYSIS ----------
+async function analyzeWithGemini(dataUrl, tabId) {
+    // STEP 0: Load API key from storage
+    const GEMINI_API_KEY = await getStorageValue('geminiApiKey');
+    if (!GEMINI_API_KEY) {
+        chrome.tabs.sendMessage(tabId, {
+            action: "AI_RESULT",
+            text: "Gemini API key is not configured. Set `geminiApiKey` in extension storage first."
+        });
+        return;
+    }
+
+    // STEP 1: Cooldown Check (Rate Limiting)
+    const now = Date.now();
+    const lastGeminiCall = (await getStorageValue(LAST_GEMINI_CALL_STORAGE_KEY)) || 0;
+    if (now - lastGeminiCall < GEMINI_COOLDOWN_MS) {
+        chrome.tabs.sendMessage(tabId, {
+            action: "AI_RESULT",
+            text: "Please wait before making another AI request (rate limit applied)."
+        });
+        return;
+    }
+    await setStorageValue(LAST_GEMINI_CALL_STORAGE_KEY, now);
+
+    const base64 = String(dataUrl).split(",")[1];
+    if (!base64) {
+        chrome.tabs.sendMessage(tabId, {
+            action: "AI_RESULT",
+            text: "Could not read image data for analysis."
+        });
+        return;
+    }
+
+    try {
+        const response = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent?key=${encodeURIComponent(GEMINI_API_KEY)}`,
+            {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    contents: [{
+                        parts: [
+                            { text:
+                                `You are a visual analysis assistant.
+
+1. Identify the image type:
+- Text/Notes
+- Question or Problem
+- UI/App Screenshot
+- Chart/Graph/Table
+- Other
+
+2. Summarize the image briefly in simple language.
+Do not assume missing information.
+
+3. If the image contains a question or problem:
+- Do not give the final answer unless asked
+- Explain the solving approach step-by-step
+- Mention key concepts or formulas
+- Prefer the best approach if multiple exist
+
+4. If it is not a problem:
+- Explain the main idea
+- Highlight important elements
+
+Rules:
+- Say if the image is unclear
+- Do not hallucinate
+- Keep it beginner-friendly`
+                             },
+                            { inline_data: { mime_type: "image/png", data: base64 } }
+                        ]
+                    }]
+                })
+            }
+        );
+
+        const data = await response.json();
+
+        // STEP 2: Proper Error Handling
+        if (data?.error) {
+            const msg = data.error?.message || 'Unknown API error';
+            if (String(msg).toLowerCase().includes("quota")) {
+                chrome.tabs.sendMessage(tabId, {
+                    action: "AI_RESULT",
+                    text: "Gemini API quota exceeded. Please wait or upgrade your API plan."
+                });
+            } else {
+                chrome.tabs.sendMessage(tabId, {
+                    action: "AI_RESULT",
+                    text: `API Error: ${msg}`
+                });
+            }
+            return;
+        }
+
+        const text = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+        if (text) {
+            chrome.tabs.sendMessage(tabId, { action: "AI_RESULT", text });
+        } else {
+            chrome.tabs.sendMessage(tabId, {
+                action: "AI_RESULT",
+                text: "No meaningful response generated by AI."
+            });
+        }
+    } catch (e) {
+        chrome.tabs.sendMessage(tabId, {
+            action: "AI_RESULT",
+            text: "Network or server error. Please try again later."
+        });
+        console.error("Gemini Fetch Error:", e);
+    }
+}
 
 // Log when extension is installed/updated
 chrome.runtime.onInstalled.addListener((details) => {
