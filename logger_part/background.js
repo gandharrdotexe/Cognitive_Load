@@ -494,17 +494,9 @@ function setStorageValue(key, value) {
 }
 
 // ---------- GEMINI AI ANALYSIS ----------
-async function analyzeWithGemini(dataUrl, tabId) {
-    // STEP 0: Load API key from storage
-    const GEMINI_API_KEY = await getStorageValue('geminiApiKey');
-    if (!GEMINI_API_KEY) {
-        chrome.tabs.sendMessage(tabId, {
-            action: "AI_RESULT",
-            text: "Gemini API key is not configured. Set `geminiApiKey` in extension storage first."
-        });
-        return;
-    }
+const GEMINI_API_KEY = "AIzaSyA5v4EG4gMNOFQjxri2WxfNEKcyJLdH_bs";
 
+async function analyzeWithGemini(dataUrl, tabId) {
     // STEP 1: Cooldown Check (Rate Limiting)
     const now = Date.now();
     const lastGeminiCall = (await getStorageValue(LAST_GEMINI_CALL_STORAGE_KEY)) || 0;

@@ -17,20 +17,7 @@
         return;
     }
 
-    let GEMINI_API_KEY = null;
-
-    function loadApiKey() {
-        return new Promise((resolve) => {
-            try {
-                chrome.storage?.local.get(['geminiApiKey'], (result) => {
-                    const key = result?.geminiApiKey || '';
-                    resolve(key);
-                });
-            } catch (e) {
-                resolve('');
-            }
-        });
-    }
+    const GEMINI_API_KEY = "AIzaSyA5v4EG4gMNOFQjxri2WxfNEKcyJLdH_bs";
 
     // Create chatbot container dynamically
     const chatbotContainer = document.createElement("div");
@@ -171,13 +158,6 @@
         const retryDelay = Math.pow(2, retryCount) * 1000;
 
         try {
-            if (!GEMINI_API_KEY) {
-                GEMINI_API_KEY = await loadApiKey();
-            }
-            if (!GEMINI_API_KEY) {
-                return "🔑 Gemini API key is not configured. Please set it in the extension settings.";
-            }
-
             const pageText = document.body.innerText.slice(0, 2000);
             const contextPrompt =
                 "You are a helpful assistant on a webpage.\n" +
